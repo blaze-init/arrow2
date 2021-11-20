@@ -1,5 +1,4 @@
 use crossbeam_channel::unbounded;
-use parquet2::metadata::ColumnChunkMetaData;
 
 use std::fs::File;
 use std::sync::Arc;
