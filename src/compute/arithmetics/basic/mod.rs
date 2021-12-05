@@ -24,12 +24,13 @@ use num_traits::{CheckedNeg, WrappingNeg};
 
 use crate::{
     array::{Array, PrimitiveArray},
+    scalar::PrimitiveScalar,
     types::NativeType,
 };
 
 use super::super::arity::{unary, unary_checked};
 
-/// Negates values from array.
+/// Negates the values of the [`PrimitiveArray<T>`] (validity is preserved)
 ///
 /// # Examples
 /// ```
@@ -85,4 +86,18 @@ where
     T: NativeType + WrappingNeg,
 {
     unary(array, |a| a.wrapping_neg(), array.data_type().clone())
+}
+
+#[inline]
+fn binary_scalar<T: NativeType, F: Fn(T, T) -> T>(
+    lhs: &PrimitiveArray<T>,
+    rhs: &PrimitiveScalar<T>,
+    op: F,
+) -> PrimitiveArray<T> {
+    let rhs = if let Some(rhs) = rhs.value() {
+        rhs
+    } else {
+        return PrimitiveArray::<T>::new_null(lhs.data_type().clone(), lhs.len());
+    };
+    unary(lhs, |x| op(x, rhs), lhs.data_type().clone())
 }

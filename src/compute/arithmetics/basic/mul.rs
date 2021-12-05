@@ -11,12 +11,12 @@ use crate::{
             ArrayCheckedMul, ArrayMul, ArrayOverflowingMul, ArraySaturatingMul, ArrayWrappingMul,
             NativeArithmetics,
         },
-        arity::{
-            binary, binary_checked, binary_with_bitmap, unary, unary_checked, unary_with_bitmap,
-        },
+        arity::{binary, binary_checked, binary_with_bitmap, unary_checked, unary_with_bitmap},
     },
-    types::NativeType,
+    scalar::PrimitiveScalar,
 };
+
+use super::binary_scalar;
 
 /// Multiplies two primitive arrays with the same type.
 /// Panics if the multiplication of one pair of values overflows.
@@ -34,7 +34,7 @@ use crate::{
 /// ```
 pub fn mul<T>(lhs: &PrimitiveArray<T>, rhs: &PrimitiveArray<T>) -> PrimitiveArray<T>
 where
-    T: NativeType + Mul<Output = T>,
+    T: NativeArithmetics + Mul<Output = T>,
 {
     binary(lhs, rhs, lhs.data_type().clone(), |a, b| a * b)
 }
@@ -55,7 +55,7 @@ where
 /// ```
 pub fn wrapping_mul<T>(lhs: &PrimitiveArray<T>, rhs: &PrimitiveArray<T>) -> PrimitiveArray<T>
 where
-    T: NativeType + WrappingMul<Output = T>,
+    T: NativeArithmetics + WrappingMul<Output = T>,
 {
     let op = move |a: T, b: T| a.wrapping_mul(&b);
 
@@ -79,7 +79,7 @@ where
 /// ```
 pub fn checked_mul<T>(lhs: &PrimitiveArray<T>, rhs: &PrimitiveArray<T>) -> PrimitiveArray<T>
 where
-    T: NativeType + CheckedMul<Output = T>,
+    T: NativeArithmetics + CheckedMul<Output = T>,
 {
     let op = move |a: T, b: T| a.checked_mul(&b);
 
@@ -103,7 +103,7 @@ where
 /// ```
 pub fn saturating_mul<T>(lhs: &PrimitiveArray<T>, rhs: &PrimitiveArray<T>) -> PrimitiveArray<T>
 where
-    T: NativeType + SaturatingMul<Output = T>,
+    T: NativeArithmetics + SaturatingMul<Output = T>,
 {
     let op = move |a: T, b: T| a.saturating_mul(&b);
 
@@ -131,7 +131,7 @@ pub fn overflowing_mul<T>(
     rhs: &PrimitiveArray<T>,
 ) -> (PrimitiveArray<T>, Bitmap)
 where
-    T: NativeType + OverflowingMul<Output = T>,
+    T: NativeArithmetics + OverflowingMul<Output = T>,
 {
     let op = move |a: T, b: T| a.overflowing_mul(&b);
 
@@ -200,12 +200,11 @@ where
 /// let expected = Int32Array::from(&[None, Some(12), None, Some(12)]);
 /// assert_eq!(result, expected)
 /// ```
-pub fn mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &T) -> PrimitiveArray<T>
+pub fn mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &PrimitiveScalar<T>) -> PrimitiveArray<T>
 where
-    T: NativeType + Mul<Output = T>,
+    T: NativeArithmetics + Mul<Output = T>,
 {
-    let rhs = *rhs;
-    unary(lhs, |a| a * rhs, lhs.data_type().clone())
+    binary_scalar(lhs, rhs, |a, b| a * b)
 }
 
 /// Wrapping multiplication of a scalar T to a [`PrimitiveArray`] of type T.
@@ -221,11 +220,14 @@ where
 /// let expected = Int8Array::from(&[None, Some(0)]);
 /// assert_eq!(result, expected);
 /// ```
-pub fn wrapping_mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &T) -> PrimitiveArray<T>
+pub fn wrapping_mul_scalar<T>(
+    lhs: &PrimitiveArray<T>,
+    rhs: &PrimitiveScalar<T>,
+) -> PrimitiveArray<T>
 where
-    T: NativeType + WrappingMul<Output = T>,
+    T: NativeArithmetics + WrappingMul<Output = T>,
 {
-    unary(lhs, |a| a.wrapping_mul(rhs), lhs.data_type().clone())
+    binary_scalar(lhs, rhs, |a, b| a.wrapping_mul(&b))
 }
 
 /// Checked multiplication of a scalar T to a primitive array of type T. If the
@@ -242,11 +244,15 @@ where
 /// let expected = Int8Array::from(&[None, None, None, None]);
 /// assert_eq!(result, expected);
 /// ```
-pub fn checked_mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &T) -> PrimitiveArray<T>
+pub fn checked_mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &PrimitiveScalar<T>) -> PrimitiveArray<T>
 where
-    T: NativeType + CheckedMul<Output = T>,
+    T: NativeArithmetics + CheckedMul<Output = T>,
 {
-    let rhs = *rhs;
+    let rhs = if let Some(rhs) = rhs.value() {
+        rhs
+    } else {
+        return PrimitiveArray::<T>::new_null(lhs.data_type().clone(), lhs.len());
+    };
     let op = move |a: T| a.checked_mul(&rhs);
 
     unary_checked(lhs, op, lhs.data_type().clone())
@@ -266,14 +272,14 @@ where
 /// let expected = Int8Array::from(&[Some(-128i8)]);
 /// assert_eq!(result, expected);
 /// ```
-pub fn saturating_mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &T) -> PrimitiveArray<T>
+pub fn saturating_mul_scalar<T>(
+    lhs: &PrimitiveArray<T>,
+    rhs: &PrimitiveScalar<T>,
+) -> PrimitiveArray<T>
 where
-    T: NativeType + SaturatingMul<Output = T>,
+    T: NativeArithmetics + SaturatingMul<Output = T>,
 {
-    let rhs = *rhs;
-    let op = move |a: T| a.saturating_mul(&rhs);
-
-    unary(lhs, op, lhs.data_type().clone())
+    binary_scalar(lhs, rhs, |a, b| a.saturating_mul(&b))
 }
 
 /// Overflowing multiplication of a scalar T to a primitive array of type T. If
@@ -291,52 +297,62 @@ where
 /// let expected = Int8Array::from(&[Some(100i8), Some(16i8)]);
 /// assert_eq!(result, expected);
 /// ```
-pub fn overflowing_mul_scalar<T>(lhs: &PrimitiveArray<T>, rhs: &T) -> (PrimitiveArray<T>, Bitmap)
+pub fn overflowing_mul_scalar<T>(
+    lhs: &PrimitiveArray<T>,
+    rhs: &PrimitiveScalar<T>,
+) -> (PrimitiveArray<T>, Bitmap)
 where
-    T: NativeType + OverflowingMul<Output = T>,
+    T: NativeArithmetics + OverflowingMul<Output = T>,
 {
-    let rhs = *rhs;
+    let rhs = if let Some(rhs) = rhs.value() {
+        rhs
+    } else {
+        return (
+            PrimitiveArray::<T>::new_null(lhs.data_type().clone(), lhs.len()),
+            Bitmap::new_zeroed(lhs.len()),
+        );
+    };
     let op = move |a: T| a.overflowing_mul(&rhs);
 
     unary_with_bitmap(lhs, op, lhs.data_type().clone())
 }
 
 // Implementation of ArrayMul trait for PrimitiveArrays with a scalar
-impl<T> ArrayMul<T> for PrimitiveArray<T>
+impl<T> ArrayMul<PrimitiveScalar<T>> for PrimitiveArray<T>
 where
-    T: NativeType + Mul<Output = T> + NativeArithmetics,
+    T: NativeArithmetics + Mul<Output = T>,
 {
-    fn mul(&self, rhs: &T) -> Self {
+    fn mul(&self, rhs: &PrimitiveScalar<T>) -> Self {
         mul_scalar(self, rhs)
     }
 }
 
 // Implementation of ArrayCheckedMul trait for PrimitiveArrays with a scalar
-impl<T> ArrayCheckedMul<T> for PrimitiveArray<T>
+impl<T> ArrayCheckedMul<PrimitiveScalar<T>> for PrimitiveArray<T>
 where
     T: NativeArithmetics + CheckedMul<Output = T>,
 {
-    fn checked_mul(&self, rhs: &T) -> Self {
+    fn checked_mul(&self, rhs: &PrimitiveScalar<T>) -> Self {
         checked_mul_scalar(self, rhs)
     }
 }
 
 // Implementation of ArraySaturatingMul trait for PrimitiveArrays with a scalar
-impl<T> ArraySaturatingMul<T> for PrimitiveArray<T>
+impl<T> ArraySaturatingMul<PrimitiveScalar<T>> for PrimitiveArray<T>
 where
     T: NativeArithmetics + SaturatingMul<Output = T>,
 {
-    fn saturating_mul(&self, rhs: &T) -> Self {
+    fn saturating_mul(&self, rhs: &PrimitiveScalar<T>) -> Self {
         saturating_mul_scalar(self, rhs)
     }
 }
 
 // Implementation of ArraySaturatingMul trait for PrimitiveArrays with a scalar
-impl<T> ArrayOverflowingMul<T> for PrimitiveArray<T>
+impl<T> ArrayOverflowingMul<PrimitiveScalar<T>> for PrimitiveArray<T>
 where
     T: NativeArithmetics + OverflowingMul<Output = T>,
 {
-    fn overflowing_mul(&self, rhs: &T) -> (Self, Bitmap) {
+    fn overflowing_mul(&self, rhs: &PrimitiveScalar<T>) -> (Self, Bitmap) {
         overflowing_mul_scalar(self, rhs)
     }
 }
