@@ -12,6 +12,7 @@ use crate::types::months_days_ns;
 
 use super::nested::*;
 use super::util;
+use crate::mutable_record_batch::DynMutableListArray;
 
 fn make_mutable(
     data_type: &DataType,

@@ -20,6 +20,7 @@ mod vec;
 
 pub mod compute;
 pub mod io;
+pub mod mutable_record_batch;
 pub mod record_batch;
 pub mod temporal_conversions;
 

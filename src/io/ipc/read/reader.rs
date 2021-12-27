@@ -34,20 +34,20 @@ use super::common::*;
 #[derive(Debug, Clone)]
 pub struct FileMetadata {
     /// The schema that is read from the file header
-    schema: Arc<Schema>,
+    pub(crate) schema: Arc<Schema>,
 
     /// The blocks in the file
     ///
     /// A block indicates the regions in the file to read to get data
-    blocks: Vec<ipc::File::Block>,
+    pub(crate) blocks: Vec<ipc::File::Block>,
 
     /// Dictionaries associated to each dict_id
-    dictionaries: HashMap<usize, Arc<dyn Array>>,
+    pub(crate) dictionaries: HashMap<usize, Arc<dyn Array>>,
 
     /// FileMetadata version
-    version: ipc::Schema::MetadataVersion,
+    pub(crate) version: ipc::Schema::MetadataVersion,
 
-    is_little_endian: bool,
+    pub(crate) is_little_endian: bool,
 }
 
 impl FileMetadata {
@@ -66,7 +66,7 @@ pub struct FileReader<R: Read + Seek> {
     buffer: Vec<u8>,
 }
 
-fn read_dictionary_message<R: Read + Seek>(
+pub(crate) fn read_dictionary_message<R: Read + Seek>(
     reader: &mut R,
     offset: u64,
     data: &mut Vec<u8>,
